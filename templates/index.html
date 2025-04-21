@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Analysis Chatbot</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding-top: 20px;
+            padding-bottom: 20px;
+        }
+        .chat-container {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+        }
+        .user-message {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            max-width: 80%;
+            align-self: flex-end;
+        }
+        .bot-message {
+            background-color: #d1e7dd;
+            padding: 10px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            max-width: 80%;
+            align-self: flex-start;
+        }
+        .visualizations {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .viz-card {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 15px;
+            width: 100%;
+        }
+        .loading {
+            text-align: center;
+            margin: 20px 0;
+            display: none;
+        }
+        .loading-spinner {
+            width: 3rem;
+            height: 3rem;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .summary-stats {
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="row">
+            <div class="col-12">
+                <h1 class="text-center mb-4">Data Analysis Chatbot</h1>
+                <p class="text-center text-muted">Ask questions about your data in natural language</p>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-12">
+                <div class="chat-container" id="chatContainer">
+                    <div class="bot-message">
+                        Hello! I'm your data analysis assistant. Ask me a question about your data and I'll analyze it for you.
+                    </div>
+                </div>
+                
+                <form id="questionForm" class="mb-4">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="questionInput" placeholder="Ask a question..." required>
+                        <button class="btn btn-primary" type="submit">Ask</button>
+                    </div>
+                </form>
+                
+                <div class="loading" id="loadingIndicator">
+                    <div class="spinner-border loading-spinner text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p>Processing your question...</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-12">
+                <!-- Dashboard will be displayed here -->
+                <div id="dashboard-container" class="mt-4">
+                    <div id="query-info" style="display: none;" class="mb-3">
+                        <h4>SQL Query</h4>
+                        <pre id="sql-query"></pre>
+                        <p id="query-explanation"></p>
+                    </div>
+                    
+                    <div id="summary-container" style="display: none;" class="mb-3">
+                        <h4>Data Summary</h4>
+                        <div id="summary-content" class="summary-stats"></div>
+                    </div>
+                    
+                    <h4 id="viz-heading" style="display: none;">Visualizations</h4>
+                    <div id="visualizations" class="visualizations"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-12 text-center">
+                <button id="refreshSchema" class="btn btn-outline-secondary">Refresh Database Schema</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const questionForm = document.getElementById('questionForm');
+            const questionInput = document.getElementById('questionInput');
+            const chatContainer = document.getElementById('chatContainer');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const refreshSchemaBtn = document.getElementById('refreshSchema');
+            const dashboardContainer = document.getElementById('dashboard-container');
+            const visualizationsContainer = document.getElementById('visualizations');
+            const sqlQueryElement = document.getElementById('sql-query');
+            const queryExplanationElement = document.getElementById('query-explanation');
+            const queryInfoContainer = document.getElementById('query-info');
+            const summaryContainer = document.getElementById('summary-container');
+            const summaryContent = document.getElementById('summary-content');
+            const vizHeading = document.getElementById('viz-heading');
+            
+            // Function to add a message to the chat
+            function addMessage(message, isUser = false) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = isUser ? 'user-message' : 'bot-message';
+                messageDiv.textContent = message;
+                chatContainer.appendChild(messageDiv);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+            
+            // Function to display the dashboard
+            function displayDashboard(dashboard) {
+                // Reset containers
+                visualizationsContainer.innerHTML = '';
+                summaryContent.innerHTML = '';
+                
+                // Display SQL query and explanation
+                if (dashboard.query_info && dashboard.query_info.sql) {
+                    sqlQueryElement.textContent = dashboard.query_info.sql;
+                    queryInfoContainer.style.display = 'block';
+                }
+                
+                if (dashboard.summary) {
+                    // Display summary statistics
+                    const summary = dashboard.summary;
+                    let summaryHtml = `<p>Rows: ${summary.row_count} | Columns: ${summary.column_count}</p>`;
+                    
+                    summaryHtml += '<div class="row">';
+                    
+                    // Column types summary
+                    if (summary.column_types) {
+                        summaryHtml += '<div class="col-md-4">';
+                        summaryHtml += '<h5>Column Types</h5>';
+                        summaryHtml += '<ul class="list-group list-group-flush">';
+                        for (const [type, count] of Object.entries(summary.column_types)) {
+                            if (count > 0) {
+                                summaryHtml += `<li class="list-group-item">${type}: ${count}</li>`;
+                            }
+                        }
+                        summaryHtml += '</ul>';
+                        summaryHtml += '</div>';
+                    }
+                    
+                    summaryHtml += '</div>';
+                    
+                    summaryContent.innerHTML = summaryHtml;
+                    summaryContainer.style.display = 'block';
+                }
+                
+                // Display visualizations
+                if (dashboard.visualizations && dashboard.visualizations.length > 0) {
+                    vizHeading.style.display = 'block';
+                    dashboard.visualizations.forEach(viz => {
+                        const vizCard = document.createElement('div');
+                        vizCard.className = 'viz-card';
+                        
+                        const header = document.createElement('h5');
+                        header.textContent = viz.title;
+                        
+                        const img = document.createElement('img');
+                        img.src = `data:image/png;base64,${viz.image}`;
+                        img.className = 'img-fluid';
+                        img.alt = viz.title;
+                        
+                        vizCard.appendChild(header);
+                        vizCard.appendChild(img);
+                        visualizationsContainer.appendChild(vizCard);
+                    });
+                }
+            }
+            
+            // Handle question submission
+            questionForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const question = questionInput.value.trim();
+                
+                if (question) {
+                    // Display user question
+                    addMessage(question, true);
+                    questionInput.value = '';
+                    
+                    // Show loading indicator
+                    loadingIndicator.style.display = 'block';
+                    
+                    try {
+                        // Send question to API
+                        const response = await fetch('/ask', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ question }),
+                        });
+                        
+                        const data = await response.json();
+                        
+                        // Hide loading indicator
+                        loadingIndicator.style.display = 'none';
+                        
+                        if (data.status === 'error') {
+                            // Display error message
+                            addMessage(`Error: ${data.error}`);
+                        } else {
+                            // Display response message
+                            let responseMsg = `I've analyzed your question and found ${data.row_count} rows of data.`;
+                            addMessage(responseMsg);
+                            
+                            // Display dashboard
+                            if (data.dashboard) {
+                                displayDashboard(data.dashboard);
+                            }
+                            
+                            // Display query info
+                            if (data.sql_query) {
+                                sqlQueryElement.textContent = data.sql_query;
+                                queryExplanationElement.textContent = data.query_explanation || '';
+                                queryInfoContainer.style.display = 'block';
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error:', error);
+                        loadingIndicator.style.display = 'none';
+                        addMessage('Sorry, there was an error processing your question.');
+                    }
+                }
+            });
+            
+            // Handle refreshing schema
+            refreshSchemaBtn.addEventListener('click', async () => {
+                refreshSchemaBtn.disabled = true;
+                refreshSchemaBtn.textContent = 'Refreshing...';
+                
+                try {
+                    const response = await fetch('/refresh-schema', {
+                        method: 'POST'
+                    });
+                    const data = await response.json();
+                    
+                    if (data.status === 'success') {
+                        addMessage('Database schema has been refreshed successfully.');
+                    } else {
+                        addMessage(`Error refreshing schema: ${data.message}`);
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    addMessage('Sorry, there was an error refreshing the database schema.');
+                } finally {
+                    refreshSchemaBtn.disabled = false;
+                    refreshSchemaBtn.textContent = 'Refresh Database Schema';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
