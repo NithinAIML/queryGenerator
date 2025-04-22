@@ -362,3 +362,22 @@ Please analyze these results and provide insights relevant to the question."""}
             formatted_parts.append(f"\nGenerated {vis_count} visualizations in dashboard: {dashboard['title']}")
         
         return "\n".join(formatted_parts)
+    
+    def generate_query(self, question):
+        """
+        Generate an SQL query based on the user's question.
+        
+        Args:
+            question (str): The user's natural language question
+            
+        Returns:
+            dict: A dictionary containing the SQL query, explanation, and any relevant metadata
+        """
+        # Get the database schema
+        schema_info = self.get_schema_context()
+        
+        # Generate the SQL query using the query generator
+        query_result = self.query_generator.generate_sql_query(question, schema_info)
+        
+        # Return the query result
+        return query_result

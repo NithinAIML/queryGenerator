@@ -68,10 +68,42 @@
         .test-button {
             margin-right: 10px;
         }
+        /* Dark mode styles */
+        body.dark-mode {
+            background-color: #212529;
+            color: #f8f9fa;
+        }
+        body.dark-mode .chat-container {
+            border-color: #495057;
+        }
+        body.dark-mode .user-message {
+            background-color: #495057;
+            color: #f8f9fa;
+        }
+        body.dark-mode .bot-message {
+            background-color: #198754;
+            color: #f8f9fa;
+        }
+        body.dark-mode .viz-card {
+            background-color: #343a40;
+            border-color: #495057;
+        }
+        body.dark-mode pre {
+            background-color: #343a40;
+            color: #f8f9fa;
+        }
+        .dark-mode-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container position-relative">
+        <button id="darkModeToggle" class="btn btn-outline-secondary dark-mode-toggle">
+            <i class="bi bi-moon"></i> Dark Mode
+        </button>
         <div class="row">
             <div class="col-12">
                 <h1 class="text-center mb-4">Data Analysis Chatbot</h1>
@@ -149,6 +181,7 @@
             const summaryContainer = document.getElementById('summary-container');
             const summaryContent = document.getElementById('summary-content');
             const vizHeading = document.getElementById('viz-heading');
+            const darkModeToggle = document.getElementById('darkModeToggle');
             
             // Function to add a message to the chat
             function addMessage(message, isUser = false) {
@@ -329,6 +362,15 @@
                     testQueryGenerationBtn.disabled = false;
                     testQueryGenerationBtn.textContent = 'Test Query Generation';
                 }
+            });
+
+            // Handle dark mode toggle
+            darkModeToggle.addEventListener('click', () => {
+                document.body.classList.toggle('dark-mode');
+                const isDarkMode = document.body.classList.contains('dark-mode');
+                darkModeToggle.innerHTML = isDarkMode 
+                    ? '<i class="bi bi-sun"></i> Light Mode' 
+                    : '<i class="bi bi-moon"></i> Dark Mode';
             });
         });
     </script>
