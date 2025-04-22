@@ -65,6 +65,9 @@
         .summary-stats {
             margin-top: 15px;
         }
+        .test-button {
+            margin-right: 10px;
+        }
     </style>
 </head>
 <body>
@@ -124,6 +127,7 @@
         <div class="row mt-4">
             <div class="col-12 text-center">
                 <button id="refreshSchema" class="btn btn-outline-secondary">Refresh Database Schema</button>
+                <button id="testQueryGeneration" class="btn btn-outline-primary test-button">Test Query Generation</button>
             </div>
         </div>
     </div>
@@ -136,6 +140,7 @@
             const chatContainer = document.getElementById('chatContainer');
             const loadingIndicator = document.getElementById('loadingIndicator');
             const refreshSchemaBtn = document.getElementById('refreshSchema');
+            const testQueryGenerationBtn = document.getElementById('testQueryGeneration');
             const dashboardContainer = document.getElementById('dashboard-container');
             const visualizationsContainer = document.getElementById('visualizations');
             const sqlQueryElement = document.getElementById('sql-query');
@@ -293,6 +298,36 @@
                 } finally {
                     refreshSchemaBtn.disabled = false;
                     refreshSchemaBtn.textContent = 'Refresh Database Schema';
+                }
+            });
+
+            // Handle test query generation
+            testQueryGenerationBtn.addEventListener('click', async () => {
+                testQueryGenerationBtn.disabled = true;
+                testQueryGenerationBtn.textContent = 'Testing...';
+
+                try {
+                    const response = await fetch('/test-query', {
+                        method: 'POST'
+                    });
+                    const data = await response.json();
+
+                    if (data.status === 'success') {
+                        addMessage('Test query generated successfully.');
+                        if (data.sql_query) {
+                            sqlQueryElement.textContent = data.sql_query;
+                            queryExplanationElement.textContent = data.query_explanation || '';
+                            queryInfoContainer.style.display = 'block';
+                        }
+                    } else {
+                        addMessage(`Error generating test query: ${data.message}`);
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    addMessage('Sorry, there was an error generating the test query.');
+                } finally {
+                    testQueryGenerationBtn.disabled = false;
+                    testQueryGenerationBtn.textContent = 'Test Query Generation';
                 }
             });
         });

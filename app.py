@@ -126,6 +126,35 @@ def health_check():
     }
     return jsonify(status)
 
+@app.route('/test-query', methods=['POST'])
+def test_query():
+    """
+    Endpoint to test SQL query generation without running full analysis.
+    """
+    if not chatbot:
+        return jsonify({"status": "error", "error": "Chatbot not properly initialized"}), 500
+    
+    try:
+        # Use a sample question to test query generation
+        sample_question = "Show me the total sales by product category"
+        
+        # Use the chatbot's query generation capability
+        sql_query = chatbot.generate_query(sample_question)
+        
+        return jsonify({
+            'status': 'success',
+            'sql_query': sql_query,
+            'query_explanation': f"Generated SQL query for the sample question: '{sample_question}'",
+            'message': 'Query generated successfully'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error in test query generation: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
 if __name__ == '__main__':
     # Check if the connection to BigQuery is established
     if chatbot and not chatbot.bq_connector.is_connected():
