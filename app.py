@@ -1,9 +1,13 @@
 from flask import Flask, render_template, request, jsonify
+import sys
 import os
 import json
 from dotenv import load_dotenv
 
-from .analysis_chatbot import AnalysisChatbot
+# Add the parent directory to sys.path to enable absolute imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from queryGenerator.analysis_chatbot import AnalysisChatbot
 
 # Load environment variables from .env file
 load_dotenv()

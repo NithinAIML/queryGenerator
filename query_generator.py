@@ -1,142 +1,127 @@
-import openai
+"""
+SQL Query Generator using OpenAI LLMs
+"""
+
+from typing import Dict, Optional, List, Any
+import json
 import os
-from typing import Dict, Optional
-import re
+from .openai_client import OpenAIClient
 
 class QueryGenerator:
     """
-    A class to generate SQL queries from natural language using LLMs.
+    Class for generating SQL queries from natural language questions using OpenAI
     """
     
     def __init__(self, 
                 api_key: Optional[str] = None, 
-                model: str = "gpt-4-turbo-preview"):
+                api_endpoint: Optional[str] = None,
+                model: str = "gpt-3.5-turbo"):
         """
-        Initialize the query generator with OpenAI API credentials
+        Initialize the query generator
         
         Parameters:
         -----------
         api_key : str, optional
-            OpenAI API key (will use environment variable if not provided)
+            OpenAI API key, will use OPENAI_API_KEY env var if not provided
+        api_endpoint : str, optional
+            OpenAI API endpoint URL, will use OPENAI_API_ENDPOINT env var if not provided
         model : str
-            The LLM model to use for query generation
+            Model name to use for query generation
         """
+        self.client = OpenAIClient(api_key=api_key, api_endpoint=api_endpoint)
         self.model = model
-        self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
-        self._initialize_client()
-        
-    def _initialize_client(self):
-        """Initialize OpenAI client"""
-        if self.api_key:
-            openai.api_key = self.api_key
-        else:
-            print("Warning: No OpenAI API key provided. Using environment variable if available.")
     
-    def generate_sql_query(self, 
-                          user_question: str, 
-                          schema_context: str) -> Dict[str, str]:
+    def generate_sql_query(self, user_question: str, schema_context: str) -> Dict[str, str]:
         """
         Generate a SQL query from a natural language question
         
         Parameters:
         -----------
         user_question : str
-            The natural language question to convert to SQL
+            User's question in natural language
         schema_context : str
-            The database schema information as context
+            BigQuery schema context
             
         Returns:
         --------
         Dict[str, str]
-            Dictionary with 'query' (SQL query) and 'explanation' (explanation of the query)
+            Dictionary with query and explanation
         """
-        prompt = self._create_prompt(user_question, schema_context)
+        # Create prompt with schema context and question
+        messages = [
+            {"role": "system", "content": f"""You are a SQL expert that generates BigQuery SQL queries based on user questions.
+Use the following schema information to create your queries:
+
+{schema_context}
+
+Follow these rules:
+1. Always generate standard BigQuery SQL.
+2. Return valid SQL that will run directly in BigQuery.
+3. Use only the tables and columns provided in the schema.
+4. Format complex queries with appropriate line breaks and indentation.
+5. Include appropriate JOINs based on the schema relationships.
+6. Include a brief explanation of your query and key features.
+7. For questions asking about trends over time, include appropriate date/time columns in your query.
+8. If you cannot generate a query based on the provided information, explain why.
+9. Respond with a JSON object containing two fields: 'query' with the SQL query and 'explanation' with your explanation."""},
+            {"role": "user", "content": user_question}
+        ]
         
         try:
-            # Call OpenAI API to generate SQL
-            response = openai.ChatCompletion.create(
+            # Call the OpenAI API
+            response = self.client.chat_completion(
+                messages=messages,
                 model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that translates natural language questions into BigQuery SQL queries. Only respond with the SQL query and a short explanation. Format your response as 'SQL: <query>\n\nExplanation: <explanation>'."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1,  # Low temperature for more deterministic results
-                max_tokens=1000
+                temperature=0.1,  # Low temperature for more deterministic outputs
+                max_tokens=1500
             )
             
-            # Extract SQL and explanation from response
-            sql_response = response.choices[0].message.content
-            return self._parse_response(sql_response)
+            # Extract the response text
+            response_text = self.client.get_chat_completion_content(response)
             
+            # Parse the JSON response
+            try:
+                # Try to extract JSON from the response
+                # First check if the response is already valid JSON
+                try:
+                    result = json.loads(response_text)
+                except json.JSONDecodeError:
+                    # If not, try to extract JSON from markdown code blocks
+                    if "```json" in response_text:
+                        json_text = response_text.split("```json")[1].split("```")[0].strip()
+                        result = json.loads(json_text)
+                    elif "```" in response_text:
+                        json_text = response_text.split("```")[1].strip()
+                        result = json.loads(json_text)
+                    else:
+                        # If no code blocks, just try to find JSON-like content
+                        start = response_text.find("{")
+                        end = response_text.rfind("}") + 1
+                        if start >= 0 and end > 0:
+                            json_text = response_text[start:end]
+                            result = json.loads(json_text)
+                        else:
+                            raise ValueError("Could not extract JSON from response")
+                
+                # Ensure the response has the expected structure
+                if "query" not in result:
+                    result["query"] = ""
+                if "explanation" not in result:
+                    result["explanation"] = "No explanation provided."
+                
+                return result
+            
+            except (json.JSONDecodeError, ValueError) as e:
+                print(f"Error parsing model response: {e}")
+                # Return a fallback response if JSON parsing fails
+                return {
+                    "query": "",
+                    "explanation": f"Error generating SQL query: {str(e)}. Response format was not as expected."
+                }
+        
         except Exception as e:
-            print(f"Error generating SQL query: {str(e)}")
+            print(f"Error calling OpenAI API: {e}")
             return {
                 "query": "",
                 "explanation": f"Error generating SQL query: {str(e)}"
             }
-    
-    def _create_prompt(self, user_question: str, schema_context: str) -> str:
-        """
-        Create a prompt for the LLM
-        
-        Parameters:
-        -----------
-        user_question : str
-            The user's question
-        schema_context : str
-            Schema information
-            
-        Returns:
-        --------
-        str
-            The formatted prompt
-        """
-        return f"""
-I need to convert a natural language question into a BigQuery SQL query.
-
-DATABASE SCHEMA INFORMATION:
-{schema_context}
-
-USER QUESTION:
-{user_question}
-
-Please generate a correct BigQuery SQL query that answers this question.
-Your query should be optimized and follow best practices.
-Make sure to include any necessary aggregations, grouping, filtering, or joining operations.
-Only include tables and columns mentioned in the schema.
-"""
-    
-    def _parse_response(self, response: str) -> Dict[str, str]:
-        """
-        Parse the response from the LLM to extract SQL query and explanation
-        
-        Parameters:
-        -----------
-        response : str
-            The response from the LLM
-            
-        Returns:
-        --------
-        Dict[str, str]
-            Parsed response with 'query' and 'explanation'
-        """
-        # Extract SQL query
-        sql_match = re.search(r"SQL:?\s*(```sql\s*|\`\`\`\s*|\`)?(?P<query>[\s\S]*?)(```|\`)?(\n\n|\n)Explanation", response, re.IGNORECASE)
-        if not sql_match:
-            sql_match = re.search(r"(```sql\s*|\`\`\`\s*|\`)?(?P<query>SELECT[\s\S]*?)(```|\`)?(\n\n|\n)", response, re.IGNORECASE)
-        
-        if sql_match:
-            sql_query = sql_match.group("query").strip()
-        else:
-            # Fallback: just try to find a SQL-looking query
-            sql_query = re.search(r"SELECT[\s\S]*?(FROM[\s\S]*?)?(WHERE[\s\S]*?)?(GROUP BY[\s\S]*?)?(HAVING[\s\S]*?)?(ORDER BY[\s\S]*?)?(LIMIT \d+)?", response, re.IGNORECASE)
-            sql_query = sql_query.group(0).strip() if sql_query else ""
-        
-        # Extract explanation
-        explanation_match = re.search(r"Explanation:?\s*(?P<explanation>[\s\S]*?)($|```)", response, re.IGNORECASE)
-        explanation = explanation_match.group("explanation").strip() if explanation_match else ""
-        
-        return {
-            "query": sql_query,
-            "explanation": explanation
-        }
